@@ -1,0 +1,15 @@
+{
+	"name": "adf-kpidashboarding22-dev",
+	"properties": {
+		"trustModeClaimForMi": {
+			"value": "Disabled",
+			"editable": true
+		}
+	},
+	"location": "centralindia",
+	"identity": {
+		"type": "SystemAssigned",
+		"principalId": "e4fe47bc-24bc-4755-b105-5f2c9cc77863",
+		"tenantId": "e2a39aa3-e507-4cb5-99d9-bdd2c988b418"
+	}
+}

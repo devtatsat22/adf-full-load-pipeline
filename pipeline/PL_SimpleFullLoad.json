@@ -1,0 +1,417 @@
+{
+	"name": "PL_SimpleFullLoad",
+	"properties": {
+		"description": "validates the source, lists the files contained, iterates and filters only the csv files, loads it in sink",
+		"activities": [
+			{
+				"name": "Validate_Source_Exists",
+				"type": "Validation",
+				"dependsOn": [],
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "DS_ADLS_Folder",
+						"type": "DatasetReference",
+						"parameters": {
+							"p_Container": {
+								"value": "@pipeline().parameters.p_SourceContainer",
+								"type": "Expression"
+							}
+						}
+					},
+					"timeout": "0.00:05:00",
+					"sleep": 10
+				}
+			},
+			{
+				"name": "GetMeta_SourceFiles",
+				"type": "GetMetadata",
+				"dependsOn": [
+					{
+						"activity": "Validate_Source_Exists",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "DS_ADLS_Folder",
+						"type": "DatasetReference",
+						"parameters": {
+							"p_Container": "@pipeline().parameters.p_SourceContainer"
+						}
+					},
+					"fieldList": [
+						"childItems"
+					],
+					"storeSettings": {
+						"type": "AzureBlobFSReadSettings",
+						"recursive": true,
+						"enablePartitionDiscovery": false
+					},
+					"formatSettings": {
+						"type": "DelimitedTextReadSettings"
+					}
+				}
+			},
+			{
+				"name": "Filter_CsvFiles",
+				"type": "Filter",
+				"dependsOn": [
+					{
+						"activity": "GetMeta_SourceFiles",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('GetMeta_SourceFiles').output.childItems",
+						"type": "Expression"
+					},
+					"condition": {
+						"value": "@and(equals(item().type,'File'), endswith(item().name,pipeline().parameters.p_FileExtension))",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "If_ClearTarget",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "Filter_CsvFiles",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@equals(pipeline().parameters.p_ClearTargetBeforeLoad, true)",
+						"type": "Expression"
+					},
+					"ifTrueActivities": [
+						{
+							"name": "Delete_AllSinkFiles",
+							"type": "Delete",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"dataset": {
+									"referenceName": "DS_ADLS_Generic",
+									"type": "DatasetReference",
+									"parameters": {
+										"p_Container": {
+											"value": "@pipeline().parameters.p_SinkContainer",
+											"type": "Expression"
+										}
+									}
+								},
+								"enableLogging": false,
+								"storeSettings": {
+									"type": "AzureBlobFSReadSettings",
+									"recursive": true,
+									"wildcardFileName": "*.*",
+									"enablePartitionDiscovery": false
+								}
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "ForEach_File",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "If_ClearTarget",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Filter_CsvFiles').output.Value",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "Copy data1",
+							"type": "Copy",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "DelimitedTextSource",
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "DelimitedTextReadSettings"
+									}
+								},
+								"sink": {
+									"type": "DelimitedTextSink",
+									"storeSettings": {
+										"type": "AzureBlobFSWriteSettings"
+									},
+									"formatSettings": {
+										"type": "DelimitedTextWriteSettings",
+										"quoteAllText": true,
+										"fileExtension": ".txt"
+									}
+								},
+								"enableStaging": false,
+								"translator": {
+									"type": "TabularTranslator",
+									"typeConversion": true,
+									"typeConversionSettings": {
+										"allowDataTruncation": true,
+										"treatBooleanAsNumber": false
+									}
+								}
+							},
+							"inputs": [
+								{
+									"referenceName": "DS_ADLS_Generic",
+									"type": "DatasetReference",
+									"parameters": {
+										"p_Container": {
+											"value": "@pipeline().parameters.p_SourceContainer",
+											"type": "Expression"
+										},
+										"p_FileName": {
+											"value": "@item().name",
+											"type": "Expression"
+										}
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "DS_ADLS_Generic",
+									"type": "DatasetReference",
+									"parameters": {
+										"p_Container": {
+											"value": "@pipeline().parameters.p_SinkContainer",
+											"type": "Expression"
+										},
+										"p_FileName": {
+											"value": "@item().name",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						}
+					]
+				}
+			},
+			{
+				"name": "Log_PipelineRun",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "ForEach_File",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "DelimitedTextSource",
+						"additionalColumns": [
+							{
+								"name": "PipelineName",
+								"value": {
+									"value": "@pipeline().Pipeline",
+									"type": "Expression"
+								}
+							},
+							{
+								"name": "RunId",
+								"value": {
+									"value": "@pipeline().RunId",
+									"type": "Expression"
+								}
+							},
+							{
+								"name": "TriggerTime",
+								"value": {
+									"value": "@pipeline().TriggerTime",
+									"type": "Expression"
+								}
+							},
+							{
+								"name": "Status",
+								"value": {
+									"value": "Succeeded",
+									"type": "Expression"
+								}
+							}
+						],
+						"storeSettings": {
+							"type": "AzureBlobFSReadSettings",
+							"recursive": true,
+							"enablePartitionDiscovery": false
+						},
+						"formatSettings": {
+							"type": "DelimitedTextReadSettings"
+						}
+					},
+					"sink": {
+						"type": "DelimitedTextSink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings",
+							"copyBehavior": "MergeFiles"
+						},
+						"formatSettings": {
+							"type": "DelimitedTextWriteSettings",
+							"quoteAllText": true,
+							"fileExtension": ".txt"
+						}
+					},
+					"enableStaging": false,
+					"translator": {
+						"type": "TabularTranslator",
+						"mappings": [
+							{
+								"source": {
+									"name": "PipelineName",
+									"type": "String"
+								},
+								"sink": {
+									"name": "PipelineName",
+									"type": "String",
+									"physicalType": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "RunId",
+									"type": "String"
+								},
+								"sink": {
+									"name": "RunId",
+									"type": "String",
+									"physicalType": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "TriggerTime",
+									"type": "String"
+								},
+								"sink": {
+									"name": "TriggerTime",
+									"type": "String",
+									"physicalType": "String"
+								}
+							},
+							{
+								"source": {
+									"name": "Status",
+									"type": "String"
+								},
+								"sink": {
+									"name": "Status",
+									"type": "String",
+									"physicalType": "String"
+								}
+							}
+						],
+						"typeConversion": true,
+						"typeConversionSettings": {
+							"allowDataTruncation": true,
+							"treatBooleanAsNumber": false
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "DS_ADLS_Generic",
+						"type": "DatasetReference",
+						"parameters": {
+							"p_Container": {
+								"value": "@pipeline().parameters.p_SourceContainer",
+								"type": "Expression"
+							},
+							"p_FolderPath": "@''",
+							"p_FileName": {
+								"value": "customers_1.csv",
+								"type": "Expression"
+							}
+						}
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "DS_ADLS_Log",
+						"type": "DatasetReference"
+					}
+				]
+			}
+		],
+		"parameters": {
+			"p_SourceContainer": {
+				"type": "string",
+				"defaultValue": "raw-source"
+			},
+			"p_SinkContainer": {
+				"type": "string",
+				"defaultValue": "processed-sink"
+			},
+			"p_FileExtension": {
+				"type": "string",
+				"defaultValue": ".csv"
+			},
+			"p_ClearTargetBeforeLoad": {
+				"type": "bool",
+				"defaultValue": true
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-09-19T14:41:00Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}
